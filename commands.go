@@ -17,14 +17,17 @@ type WithRPCHeader interface {
 
 // AppendEntriesRequest is the command used to append entries to the
 // replicated log.
+// 日志复制请求的RPC消息结构
 type AppendEntriesRequest struct {
 	RPCHeader
 
 	// Provide the current term and leader
+	// 当前的任期编号 领导者信息(包括服务器id和地址信息)
 	Term   uint64
 	Leader []byte
 
 	// Provide the previous entries for integrity checking
+	// 当前要复制的日志项的前一条日志项的索引项和任期编号
 	PrevLogEntry uint64
 	PrevLogTerm  uint64
 
@@ -32,6 +35,7 @@ type AppendEntriesRequest struct {
 	Entries []*Log
 
 	// Commit index on the leader
+	// 领导者节点上已提交的日志项的索引最大值
 	LeaderCommitIndex uint64
 }
 
@@ -66,10 +70,12 @@ func (r *AppendEntriesResponse) GetRPCHeader() RPCHeader {
 
 // RequestVoteRequest is the command used by a candidate to ask a Raft peer
 // for a vote in an election.
+// 请求投票的RPC消息结构
 type RequestVoteRequest struct {
 	RPCHeader
 
 	// Provide the term and our id
+	// 当前任期编号和候选节点的信息
 	Term      uint64
 	Candidate []byte
 

@@ -442,7 +442,14 @@ func HasExistingState(logs LogStore, stable StableStore, snaps SnapshotStore) (b
 // as implementations of various interfaces that are required. If we have any
 // old state, such as snapshots, logs, peers, etc, all those will be restored
 // when creating the Raft node.
-func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps SnapshotStore, trans Transport) (*Raft, error) {
+// 创建Raft节点
+func NewRaft(conf *Config /*节点配置信息 一般使用DefaultConfig函数配置即可 需要定制再改值*/,
+	fsm FSM               /*有限状态机	可以通过实现接口达到 1.将日志应用到本地状态机 2.生成快照 3.根据快照恢复数据 功能*/,
+	logs LogStore         /*存储Raft日志 可以使用raft-boltdb持久化存储数据*/,
+	stable StableStore    /*稳定存储 存储Raft集群的节点信息等(当前任期编号 最新投票时的任期编号) 同样可以使用raft-boltdb持久化存储*/,
+	snaps SnapshotStore   /*快照存储 存储节点的快照信息(压缩后的日志信息) 提供了 1.不存储 2.文件持久化存储 3.内存存储不持久化 存储方式*/,
+	trans Transport       /*Raft节点的通信通道 Raft内部集群内部节点之间的通信机制 节点之间需要通过这个通道进行日志同步 领导者选举等
+支持 1.基于TCP协议的TCPTransport 可以跨网络通信 2.基于内存的InmemTransport 不通过网络 在内存里通过Channel通信*/) (*Raft, error) {
 	// Validate the configuration.
 	if err := ValidateConfig(conf); err != nil {
 		return nil, err
@@ -637,6 +644,7 @@ func (r *Raft) restoreSnapshot() error {
 // One sane approach is to bootstrap a single server with a configuration
 // listing just itself as a Voter, then invoke AddVoter() on it to add other
 // servers to the cluster.
+// 集群最开始只有一个节点 启动这个节点
 func (r *Raft) BootstrapCluster(configuration Configuration) Future {
 	bootstrapReq := &bootstrapFuture{}
 	bootstrapReq.init()
@@ -755,6 +763,7 @@ func (r *Raft) GetConfiguration() ConfigurationFuture {
 
 // AddPeer (deprecated) is used to add a new peer into the cluster. This must be
 // run on the leader or it will fail. Use AddVoter/AddNonvoter instead.
+// 已废弃 不推荐使用
 func (r *Raft) AddPeer(peer ServerAddress) Future {
 	if r.protocolVersion > 2 {
 		return errorFuture{ErrUnsupportedProtocol}
@@ -772,6 +781,7 @@ func (r *Raft) AddPeer(peer ServerAddress) Future {
 // current leader is being removed, it will cause a new election
 // to occur. This must be run on the leader or it will fail.
 // Use RemoveServer instead.
+// 移除节点 已被废弃
 func (r *Raft) RemovePeer(peer ServerAddress) Future {
 	if r.protocolVersion > 2 {
 		return errorFuture{ErrUnsupportedProtocol}
@@ -792,7 +802,11 @@ func (r *Raft) RemovePeer(peer ServerAddress) Future {
 // another configuration entry has been added in the meantime, this request will
 // fail. If nonzero, timeout is how long this server should wait before the
 // configuration change log entry is appended.
-func (r *Raft) AddVoter(id ServerID, address ServerAddress, prevIndex uint64, timeout time.Duration) IndexFuture {
+// 后续节点的启动 可以通过向第集群中第一个节点发送加入集群的请求 然后加入到集群中
+func (r *Raft) AddVoter(id ServerID /*服务器id*/,
+	address ServerAddress           /*服务器地址信息*/,
+	prevIndex uint64                /*前一个集群配置的索引值 一般使用默认值0*/,
+	timeout time.Duration           /*在完成集群配置的日志项添加前 最长等待时间 一般使用默认值0*/) IndexFuture {
 	if r.protocolVersion < 2 {
 		return errorFuture{ErrUnsupportedProtocol}
 	}
@@ -810,6 +824,7 @@ func (r *Raft) AddVoter(id ServerID, address ServerAddress, prevIndex uint64, ti
 // elections or log entry commitment. If the server is already in the cluster,
 // this updates the server's address. This must be run on the leader or it will
 // fail. For prevIndex and timeout, see AddVoter.
+// 将一个节点接入集群 不赋予投票权 只接收日志记录
 func (r *Raft) AddNonvoter(id ServerID, address ServerAddress, prevIndex uint64, timeout time.Duration) IndexFuture {
 	if r.protocolVersion < 3 {
 		return errorFuture{ErrUnsupportedProtocol}
@@ -826,7 +841,10 @@ func (r *Raft) AddNonvoter(id ServerID, address ServerAddress, prevIndex uint64,
 // RemoveServer will remove the given server from the cluster. If the current
 // leader is being removed, it will cause a new election to occur. This must be
 // run on the leader or it will fail. For prevIndex and timeout, see AddVoter.
-func (r *Raft) RemoveServer(id ServerID, prevIndex uint64, timeout time.Duration) IndexFuture {
+// 移除节点 必须在领导者节点运行
+func (r *Raft) RemoveServer(id ServerID /*服务器id*/,
+	prevIndex uint64                    /*前一个集群配置的索引值 一般使用默认值0*/,
+	timeout time.Duration               /*在完成集群配置的日志项添加前 最大的等待时间 一般使用默认值0*/) IndexFuture {
 	if r.protocolVersion < 2 {
 		return errorFuture{ErrUnsupportedProtocol}
 	}
@@ -948,6 +966,7 @@ func (r *Raft) Restore(meta *SnapshotMeta, reader io.Reader, timeout time.Durati
 }
 
 // State is used to return the current raft state.
+// 获取节点的状态 由于返回结果是32位无符号整数 所以如果想在日志或命令行接口中查看节点状态信息 可以使用 RaftState.String() 函数
 func (r *Raft) State() RaftState {
 	return r.getState()
 }

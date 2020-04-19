@@ -6,8 +6,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/armon/go-metrics"
 )
 
 const (
@@ -133,6 +131,7 @@ func (r *Raft) replicate(s *followerReplication) {
 	// Start an async heartbeating routing
 	stopHeartbeat := make(chan struct{})
 	defer close(stopHeartbeat)
+	// 开启新的协程发送心跳
 	r.goFunc(func() { r.heartbeat(s, stopHeartbeat) })
 
 RPC:
@@ -142,6 +141,7 @@ RPC:
 		case maxIndex := <-s.stopCh:
 			// Make a best effort to replicate up to this index
 			if maxIndex > 0 {
+				// 日志复制
 				r.replicateTo(s, maxIndex)
 			}
 			return
@@ -167,6 +167,7 @@ RPC:
 		}
 
 		// If things looks healthy, switch to pipeline mode
+		// 开启了流水线复制模式执行pipelineReplicate函数
 		if !shouldStop && s.allowPipeline {
 			goto PIPELINE
 		}
@@ -206,6 +207,7 @@ START:
 	}
 
 	// Setup the request
+	// 不需要日志一致性检测 复制功能正常的情况下开启流水线模式 如果复制过程中出错则退化成普通的RPC复制
 	if err := r.setupAppendEntries(s, &req, atomic.LoadUint64(&s.nextIndex), lastIndex); err == ErrLogNotFound {
 		goto SEND_SNAP
 	} else if err != nil {
@@ -237,6 +239,7 @@ START:
 
 		// Clear any failures, allow pipelining
 		s.failures = 0
+		// 日志复制成功开启流水线复制模式 用更高效的流水线复制模式代替传统模式
 		s.allowPipeline = true
 	} else {
 		atomic.StoreUint64(&s.nextIndex, max(min(s.nextIndex-1, resp.LastLog+1), 1))
@@ -376,6 +379,7 @@ func (r *Raft) heartbeat(s *followerReplication, stopCh chan struct{}) {
 		}
 
 		start := time.Now()
+		// 周期性的发送心跳通知其他节点 表明leader身份 提醒不需要重新发起选举
 		if err := r.trans.AppendEntries(s.peer.ID, s.peer.Address, &req, &resp); err != nil {
 			r.logger.Error("failed to heartbeat to", "peer", s.peer.Address, "error", err)
 			failures++

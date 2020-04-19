@@ -4,14 +4,12 @@ import (
 	"bytes"
 	"container/list"
 	"fmt"
+	"github.com/armon/go-metrics"
+	"github.com/hashicorp/go-hclog"
 	"io"
 	"io/ioutil"
 	"sync/atomic"
 	"time"
-
-	"github.com/hashicorp/go-hclog"
-
-	"github.com/armon/go-metrics"
 )
 
 const (
@@ -127,6 +125,7 @@ func (r *Raft) run() {
 	for {
 		// Check if we are doing a shutdown
 		select {
+		// 关闭节点
 		case <-r.shutdownCh:
 			// Clear the leader to prevent forwarding
 			r.setLeader("")
@@ -137,10 +136,13 @@ func (r *Raft) run() {
 		// Enter into a sub-FSM
 		switch r.getState() {
 		case Follower:
+			// 跟随者节点状态对应的功能
 			r.runFollower()
 		case Candidate:
+			// 候选者节点状态对应的功能
 			r.runCandidate()
 		case Leader:
+			// 领导者节点状态对应的功能
 			r.runLeader()
 		}
 	}
@@ -151,11 +153,14 @@ func (r *Raft) runFollower() {
 	didWarn := false
 	r.logger.Info("entering follower state", "follower", r, "leader", r.Leader())
 	metrics.IncrCounter([]string{"raft", "state", "follower"}, 1)
+	// 根据配置的HeartbeatTimeout获取一个随机超时时间
 	heartbeatTimer := randomTimeout(r.conf.HeartbeatTimeout)
 
 	for r.getState() == Follower {
+		// select实现多路IO复用 周期性地获取消息和处理
 		select {
 		case rpc := <-r.rpcCh:
+			// Follower接收日志
 			r.processRPC(rpc)
 
 		case c := <-r.configurationChangeCh:
@@ -192,10 +197,12 @@ func (r *Raft) runFollower() {
 			// Check if we have had a successful contact
 			lastContact := r.LastContact()
 			if time.Now().Sub(lastContact) < r.conf.HeartbeatTimeout {
+				// 未超时触发
 				continue
 			}
 
 			// Heartbeat failed! Transition to the candidate state
+			// 发生了超时触发 重置Leader
 			lastLeader := r.Leader()
 			r.setLeader("")
 
@@ -213,6 +220,7 @@ func (r *Raft) runFollower() {
 			} else {
 				r.logger.Warn("heartbeat timeout reached, starting election", "last-leader", lastLeader)
 				metrics.IncrCounter([]string{"raft", "transition", "heartbeat_timeout"}, 1)
+				// 节点由Follower过渡到Candidate
 				r.setState(Candidate)
 				return
 			}
@@ -251,6 +259,7 @@ func (r *Raft) runCandidate() {
 	metrics.IncrCounter([]string{"raft", "state", "candidate"}, 1)
 
 	// Start vote for us, and set a timeout
+	// Candidate选举 首选把票投给自己 之后向其他节点发起请求投票RPC请求
 	voteCh := r.electSelf()
 
 	// Make sure the leadership transfer flag is reset after each run. Having this
@@ -259,7 +268,7 @@ func (r *Raft) runCandidate() {
 	// It is important to reset that flag, because this priviledge could be abused
 	// otherwise.
 	defer func() { r.candidateFromLeadershipTransfer = false }()
-
+	// 选举超时时间
 	electionTimer := randomTimeout(r.conf.ElectionTimeout)
 
 	// Tally the votes, need a simple majority
@@ -270,6 +279,7 @@ func (r *Raft) runCandidate() {
 	for r.getState() == Candidate {
 		select {
 		case rpc := <-r.rpcCh:
+			// Candidate接收日志
 			r.processRPC(rpc)
 
 		case vote := <-voteCh:
@@ -289,6 +299,7 @@ func (r *Raft) runCandidate() {
 
 			// Check if we've become the leader
 			if grantedVotes >= votesNeeded {
+				// 选举成功
 				r.logger.Info("election won", "tally", grantedVotes)
 				r.setState(Leader)
 				r.setLeader(r.localAddr)
@@ -322,6 +333,7 @@ func (r *Raft) runCandidate() {
 			// Election failed! Restart the election. We simply return,
 			// which will kick us back into runCandidate
 			r.logger.Warn("Election timeout reached, restarting election")
+			// 到达选举超时时间直接退出	开启新一轮的选举
 			return
 
 		case <-r.shutdownCh:
@@ -437,6 +449,7 @@ func (r *Raft) runLeader() {
 	}()
 
 	// Start a replication routine for each peer
+	// 执行日志复制功能
 	r.startStopReplication()
 
 	// Dispatch a no-op log entry first. This gets this leader up to the latest
@@ -465,6 +478,7 @@ func (r *Raft) startStopReplication() {
 	lastIdx := r.getLastIndex()
 
 	// Start replication goroutines that need starting
+	// 开启新的协程调用replicate执行日志复制
 	for _, server := range r.configurations.latest.Servers {
 		if server.ID == r.localID {
 			continue
@@ -1199,6 +1213,7 @@ func (r *Raft) processRPC(rpc RPC) {
 
 	switch cmd := rpc.Command.(type) {
 	case *AppendEntriesRequest:
+		// 处理接收到的日志复制RPC请求
 		r.appendEntries(rpc, cmd)
 	case *RequestVoteRequest:
 		r.requestVote(rpc, cmd)
@@ -1271,6 +1286,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 	r.setLeader(ServerAddress(r.trans.DecodePeer(a.Leader)))
 
 	// Verify the last log entry
+	// 验证日志的一致性
 	if a.PrevLogEntry > 0 {
 		lastIdx, lastTerm := r.getLastEntry()
 
@@ -1337,6 +1353,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 
 		if n := len(newEntries); n > 0 {
 			// Append the new entries
+			// 日志持久化到该节点的机器
 			if err := r.logs.StoreLogs(newEntries); err != nil {
 				r.logger.Error("failed to append to logs", "error", err)
 				// TODO: leaving r.getLastLog() in the wrong
@@ -1358,6 +1375,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 	}
 
 	// Update the commit index
+	// 根据领导者最新提交的日志项索引值 计算当前需要被应用的日志项 应用到本地状态机
 	if a.LeaderCommitIndex > 0 && a.LeaderCommitIndex > r.getCommitIndex() {
 		start := time.Now()
 		idx := min(a.LeaderCommitIndex, r.getLastIndex())

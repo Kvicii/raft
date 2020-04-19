@@ -41,24 +41,29 @@ func (s RaftState) String() string {
 // raftState is used to maintain various state variables
 // and provides an interface to set/get the variables in a
 // thread safe manner.
+// 定义了一个节点的信息
 type raftState struct {
 	// currentTerm commitIndex, lastApplied,  must be kept at the top of
 	// the struct so they're 64 bit aligned which is a requirement for
 	// atomic ops on 32 bit platforms.
 
 	// The current term, cache of StableStore
+	// 节点当前的任期编号
 	currentTerm uint64
 
 	// Highest committed log entry
+	// 最大被提交的日志项的索引值
 	commitIndex uint64
 
 	// Last applied log to the FSM
+	// 最新被应用到状态机的日志项的索引值
 	lastApplied uint64
 
 	// protects 4 next fields
 	lastLock sync.Mutex
 
 	// Cache the latest snapshot index/term
+	// 存储中最新的日志项的索引值和任期编号
 	lastSnapshotIndex uint64
 	lastSnapshotTerm  uint64
 
@@ -70,6 +75,7 @@ type raftState struct {
 	routinesGroup sync.WaitGroup
 
 	// The current state
+	// 当前节点的状态
 	state RaftState
 }
 
