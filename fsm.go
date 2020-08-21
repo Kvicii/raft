@@ -10,11 +10,13 @@ import (
 
 // FSM provides an interface that can be implemented by
 // clients to make use of the replicated log.
+// 日志处理的核心实现
 type FSM interface {
 	// Apply log is invoked once a log entry is committed.
 	// It returns a value which will be made available in the
 	// ApplyFuture returned by Raft.Apply method if that
 	// method was called on the same Raft node as the FSM.
+	// 将日志应用到本地状态机
 	Apply(*Log) interface{}
 
 	// Snapshot is used to support log compaction. This call should
@@ -23,11 +25,13 @@ type FSM interface {
 	// threads, but Apply will be called concurrently with Persist. This means
 	// the FSM should be implemented in a fashion that allows for concurrent
 	// updates while a snapshot is happening.
+	// 生成快照
 	Snapshot() (FSMSnapshot, error)
 
 	// Restore is used to restore an FSM from a snapshot. It is not called
 	// concurrently with any other command. The FSM must discard all previous
 	// state.
+	// 根据快照恢复数据
 	Restore(io.ReadCloser) error
 }
 

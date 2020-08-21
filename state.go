@@ -11,18 +11,24 @@ type RaftState uint32
 
 const (
 	// Follower is the initial state of a Raft node.
+	// 跟随者
 	Follower RaftState = iota
 
 	// Candidate is one of the valid states of a Raft node.
+	// 候选人
 	Candidate
 
 	// Leader is one of the valid states of a Raft node.
+	// 领导者
 	Leader
 
 	// Shutdown is the terminal state of a Raft node.
+	// 关闭状态
 	Shutdown
 )
 
+// 用于输出节点状态的字符串形式
+// 存在一些需要使用字符串格式的节点状态的场景(比如日志输出)
 func (s RaftState) String() string {
 	switch s {
 	case Follower:

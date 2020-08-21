@@ -1,5 +1,7 @@
 package raft
 
+// 该文件主要是定义一些RPC消息的数据结构
+
 // RPCHeader is a common sub-structure used to pass along protocol version and
 // other information about the cluster. For older Raft implementations before
 // versioning was added this will default to a zero-valued structure when read
@@ -32,6 +34,7 @@ type AppendEntriesRequest struct {
 	PrevLogTerm  uint64
 
 	// New entries to commit
+	// 新的日志项
 	Entries []*Log
 
 	// Commit index on the leader

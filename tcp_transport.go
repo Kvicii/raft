@@ -1,5 +1,7 @@
 package raft
 
+// 基于TCP的节点间的通讯机制
+
 import (
 	"errors"
 	"github.com/hashicorp/go-hclog"
@@ -22,11 +24,11 @@ type TCPStreamLayer struct {
 // NewTCPTransport returns a NetworkTransport that is built on top of
 // a TCP streaming transport layer.
 func NewTCPTransport(
-	bindAddr string,
-	advertise net.Addr,
-	maxPool int,
-	timeout time.Duration,
-	logOutput io.Writer,
+	bindAddr string,       /*要绑定的地址信息*/
+	advertise net.Addr,    /*要绑定的地址信息*/
+	maxPool int,           /*连接池的大小*/
+	timeout time.Duration, /*超时时间*/
+	logOutput io.Writer,   /*日志输出的方式*/
 ) (*NetworkTransport, error) {
 	return newTCPTransport(bindAddr, advertise, func(stream StreamLayer) *NetworkTransport {
 		return NewNetworkTransport(stream, maxPool, timeout, logOutput)

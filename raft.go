@@ -153,14 +153,14 @@ func (r *Raft) runFollower() {
 	didWarn := false
 	r.logger.Info("entering follower state", "follower", r, "leader", r.Leader())
 	metrics.IncrCounter([]string{"raft", "state", "follower"}, 1)
-	// 根据配置的HeartbeatTimeout获取一个随机超时时间
+	// 根据配置的HeartbeatTimeout获取一个随机值用于设置心跳超时时间间隔
 	heartbeatTimer := randomTimeout(r.conf.HeartbeatTimeout)
 
 	for r.getState() == Follower {
 		// select实现多路IO复用 周期性地获取消息和处理
 		select {
 		case rpc := <-r.rpcCh:
-			// Follower接收日志
+			// Follower接收日志入口 处理日志复制RPC消息
 			r.processRPC(rpc)
 
 		case c := <-r.configurationChangeCh:
@@ -197,12 +197,12 @@ func (r *Raft) runFollower() {
 			// Check if we have had a successful contact
 			lastContact := r.LastContact()
 			if time.Now().Sub(lastContact) < r.conf.HeartbeatTimeout {
-				// 未超时触发
+				// 未超时 重新进行循环直到超时时间
 				continue
 			}
 
 			// Heartbeat failed! Transition to the candidate state
-			// 发生了超时触发 重置Leader
+			// 发生了超时 重置Leader
 			lastLeader := r.Leader()
 			r.setLeader("")
 
@@ -259,7 +259,7 @@ func (r *Raft) runCandidate() {
 	metrics.IncrCounter([]string{"raft", "state", "candidate"}, 1)
 
 	// Start vote for us, and set a timeout
-	// Candidate选举 首选把票投给自己 之后向其他节点发起请求投票RPC请求
+	// Candidate选举 首先把票投给自己 之后向其他节点发起请求投票RPC请求
 	voteCh := r.electSelf()
 
 	// Make sure the leadership transfer flag is reset after each run. Having this
@@ -268,7 +268,7 @@ func (r *Raft) runCandidate() {
 	// It is important to reset that flag, because this priviledge could be abused
 	// otherwise.
 	defer func() { r.candidateFromLeadershipTransfer = false }()
-	// 选举超时时间
+	// 获取一个随机值用于设置选举超时时间
 	electionTimer := randomTimeout(r.conf.ElectionTimeout)
 
 	// Tally the votes, need a simple majority
@@ -277,7 +277,7 @@ func (r *Raft) runCandidate() {
 	r.logger.Debug("votes", "needed", votesNeeded)
 
 	for r.getState() == Candidate {
-		select {
+		select { // 通过 select 实现多路 IO 复用 周期性地获取消息和处理
 		case rpc := <-r.rpcCh:
 			// Candidate接收日志
 			r.processRPC(rpc)
@@ -299,11 +299,11 @@ func (r *Raft) runCandidate() {
 
 			// Check if we've become the leader
 			if grantedVotes >= votesNeeded {
-				// 选举成功
+				// 候选人在指定超时时间内赢得了大多数的选票 当选为Leader
 				r.logger.Info("election won", "tally", grantedVotes)
-				r.setState(Leader)
+				r.setState(Leader)	// 设置状态为Leader
 				r.setLeader(r.localAddr)
-				return
+				return	// 退出runCandidate函数
 			}
 
 		case c := <-r.configurationChangeCh:
@@ -453,7 +453,7 @@ func (r *Raft) runLeader() {
 	}()
 
 	// Start a replication routine for each peer
-	// 执行日志复制功能
+	// 执行日志复制入口
 	r.startStopReplication()
 
 	// Dispatch a no-op log entry first. This gets this leader up to the latest
@@ -1357,7 +1357,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 
 		if n := len(newEntries); n > 0 {
 			// Append the new entries
-			// 日志持久化到该节点的机器
+			// 日志持久化到该节点
 			if err := r.logs.StoreLogs(newEntries); err != nil {
 				r.logger.Error("failed to append to logs", "error", err)
 				// TODO: leaving r.getLastLog() in the wrong

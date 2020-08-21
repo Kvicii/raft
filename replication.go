@@ -3,6 +3,7 @@ package raft
 import (
 	"errors"
 	"fmt"
+	"github.com/armon/go-metrics"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -131,9 +132,12 @@ func (r *Raft) replicate(s *followerReplication) {
 	// Start an async heartbeating routing
 	stopHeartbeat := make(chan struct{})
 	defer close(stopHeartbeat)
-	// 开启新的协程发送心跳
+	// 开启新的协程发送心跳 通知其他节点我是领导者 我还活着 不需要你们发起新的选举
 	r.goFunc(func() { r.heartbeat(s, stopHeartbeat) })
-
+	// 开启高效流水线复制的条件是:
+	// 在不需要进行日志一致性检测 普通复制功能已正常运行的时候
+	// 开启了流水线复制模式的目标:
+	// 在环境正常的情况下提升日志复制性能 如果在日志复制过程中出错了 就进入普通复制模式 继续调用replicateTo函数进行日志复制
 RPC:
 	shouldStop := false
 	for !shouldStop {
@@ -141,7 +145,7 @@ RPC:
 		case maxIndex := <-s.stopCh:
 			// Make a best effort to replicate up to this index
 			if maxIndex > 0 {
-				// 日志复制
+				// 普通的日志复制成功之后 也会指定标识位 从而使用高效的流水线复制代替普通复制
 				r.replicateTo(s, maxIndex)
 			}
 			return
@@ -207,7 +211,6 @@ START:
 	}
 
 	// Setup the request
-	// 不需要日志一致性检测 复制功能正常的情况下开启流水线模式 如果复制过程中出错则退化成普通的RPC复制
 	if err := r.setupAppendEntries(s, &req, atomic.LoadUint64(&s.nextIndex), lastIndex); err == ErrLogNotFound {
 		goto SEND_SNAP
 	} else if err != nil {
@@ -595,9 +598,9 @@ func updateLastAppended(s *followerReplication, req *AppendEntriesRequest) {
 	if logs := req.Entries; len(logs) > 0 {
 		last := logs[len(logs)-1]
 		atomic.StoreUint64(&s.nextIndex, last.Index+1)
-		s.commitment.match(s.peer.ID, last.Index)
+		s.commitment.match(s.peer.ID, last.Index)	// 调用match函数统计日志复制结果和判断大多数
 	}
 
 	// Notify still leader
-	s.notifyAll(true)
+	s.notifyAll(true)	// 将结果发送到commitCh 最终在leaderLoop中处理committed日志项
 }

@@ -48,6 +48,8 @@ type Log struct {
 
 	// Type holds the type of the log entry.
 	// 日志项的类型
+	// 可用于标识不同用途的日志项 如:
+	// 使用LogCommand标识指令对应的日志项 使用LogConfiguration标识成员变更配置对应的日志项
 	Type LogType
 
 	// Data holds the log entry's type-specific data.
@@ -67,7 +69,7 @@ type Log struct {
 	// upgraded, but a leader changeover during this process could lead to
 	// trouble, so gating extension behavior via some flag in the client
 	// program is also a good idea.
-	// 扩展信息
+	// 扩展信息 用于在指定日志项中存储一些额外的信息
 	Extensions []byte
 }
 

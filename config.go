@@ -212,6 +212,7 @@ type Config struct {
 }
 
 // DefaultConfig returns a Config with usable defaults.
+// 创建默认的配置信息
 func DefaultConfig() *Config {
 	return &Config{
 		ProtocolVersion:    ProtocolVersionMax,

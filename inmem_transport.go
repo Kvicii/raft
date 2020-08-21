@@ -1,5 +1,7 @@
 package raft
 
+// 基于内存的节点间的通讯机制 主要用于测试
+
 import (
 	"fmt"
 	"io"
