@@ -29,7 +29,7 @@ type AppendEntriesRequest struct {
 	Leader []byte
 
 	// Provide the previous entries for integrity checking
-	// 当前要复制的日志项的前一条日志项的索引项和任期编号
+	// 当前要复制的日志项的前一条日志项的索引值和任期编号
 	PrevLogEntry uint64
 	PrevLogTerm  uint64
 

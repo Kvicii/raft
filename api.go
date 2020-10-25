@@ -443,18 +443,19 @@ func HasExistingState(logs LogStore, stable StableStore, snaps SnapshotStore) (b
 // old state, such as snapshots, logs, peers, etc, all those will be restored
 // when creating the Raft node.
 // 创建Raft节点
-func NewRaft(conf *Config, /*节点配置信息: 一般使用DefaultConfig函数配置即可 需要定制再改值*/
-	fsm FSM,               /*有限状态机:	可以通过实现接口达到 1.将日志应用到本地状态机 2.生成快照 3.根据快照恢复数据 功能*/
-	logs LogStore,         /*存储Raft日志: 可以使用raft-boltdb持久化存储数据 raft-boltdb 是 Hashicorp 团队专门为 Hashicorp Raft 持久化存储而开发设计的*/
-	stable StableStore,    /*稳定存储: 存储Raft集群的节点信息等(当前任期编号 最新投票时的任期编号) 同样可以使用raft-boltdb持久化存储*/
-	snaps SnapshotStore,   /*快照存储: 存储节点的快照信息(压缩后的日志数据) 提供了3种存储方式:
+func NewRaft(conf *Config, /** 节点配置信息: 一般使用DefaultConfig函数配置即可 需要定制再改值 */
+	fsm FSM,               /** 有限状态机: 可以通过实现接口达到 1.将日志应用到本地状态机 2.生成快照 3.根据快照恢复数据功能 */
+	logs LogStore,         /** 存储Raft日志: 可以使用raft-boltdb持久化存储数据 raft-boltdb 是 Hashicorp 团队专门为 Hashicorp Raft 持久化存储而开发设计的 */
+	stable StableStore,    /** 稳定存储: 存储Raft集群的节点信息等(当前任期编号 最新投票时的任期编号) 同样可以使用raft-boltdb持久化存储 */
+	snaps SnapshotStore,   /** 快照存储: 存储节点的快照信息(压缩后的日志数据) 提供了3种存储方式:
 1.DiscardSnapshotStore: 不存储 忽略快照
 2.FileSnapshotStore: 文件持久化存储
-3.InmemSnapshotStore: 内存存 储不持久化*/
-	trans Transport, /*Raft节点的通信通道: Raft内部集群内部节点之间的通信机制 节点之间需要通过这个通道进行日志同步 领导者选举等
-支持:
+3.InmemSnapshotStore: 内存存储不持久化 在生产环境中建议采用
+FileSnapshotStore 实现快照 使用文件持久化存储 避免因程序重启 导致快照数据丢失 */
+	trans Transport, /** Raft节点的通信通道: Raft内部集群内部节点之间的通信机制 节点之间需要通过这个通道进行日志同步 领导者选举等 支持:
 1.基于TCP协议的TCPTransport 可以跨网络通信
-2.基于内存的InmemTransport 不通过网络 在内存里通过Channel通信*/) (*Raft, error) {
+2.基于内存的InmemTransport 不通过网络 在内存里通过Channel通信
+在生产环境中建议使用 TCPTransport 使用 TCP 进行网络通讯 突破单机限制 提升集群的健壮性和容灾能力 */) (*Raft, error) {
 	// Validate the configuration.
 	if err := ValidateConfig(conf); err != nil {
 		return nil, err
@@ -808,11 +809,11 @@ func (r *Raft) RemovePeer(peer ServerAddress) Future {
 // another configuration entry has been added in the meantime, this request will
 // fail. If nonzero, timeout is how long this server should wait before the
 // configuration change log entry is appended.
-// 后续节点的启动 可以通过向第集群中第一个节点发送加入集群的请求 然后加入到集群中
-func (r *Raft) AddVoter(id ServerID, /*服务器id*/
-	address ServerAddress,           /*服务器地址信息*/
-	prevIndex uint64,                /*前一个集群配置的索引值 一般使用默认值0*/
-	timeout time.Duration            /*在完成集群配置的日志项添加前 最长等待时间 一般使用默认值0*/) IndexFuture {
+// 后续节点的启动 可以通过向第集群中第一个节点发送加入集群的请求 然后加入到集群中 该函数平时用不到
+func (r *Raft) AddVoter(id ServerID, /** 服务器id */
+	address ServerAddress,           /** 服务器地址信息 */
+	prevIndex uint64,                /** 前一个集群配置的索引值 一般使用默认值0 */
+	timeout time.Duration            /** 在完成集群配置的日志项添加前 最长等待时间 一般使用默认值0 */) IndexFuture {
 	if r.protocolVersion < 2 {
 		return errorFuture{ErrUnsupportedProtocol}
 	}
@@ -848,9 +849,9 @@ func (r *Raft) AddNonvoter(id ServerID, address ServerAddress, prevIndex uint64,
 // leader is being removed, it will cause a new election to occur. This must be
 // run on the leader or it will fail. For prevIndex and timeout, see AddVoter.
 // 移除节点 必须在领导者节点运行
-func (r *Raft) RemoveServer(id ServerID, /*服务器id*/
-	prevIndex uint64,                    /*前一个集群配置的索引值 一般使用默认值0*/
-	timeout time.Duration                /*在完成集群配置的日志项添加前 最大的等待时间 一般使用默认值0*/) IndexFuture {
+func (r *Raft) RemoveServer(id ServerID, /** 服务器id */
+	prevIndex uint64,                    /** 前一个集群配置的索引值 一般使用默认值0 */
+	timeout time.Duration                /** 在完成集群配置的日志项添加前 最大的等待时间 一般使用默认值0 */) IndexFuture {
 	if r.protocolVersion < 2 {
 		return errorFuture{ErrUnsupportedProtocol}
 	}
