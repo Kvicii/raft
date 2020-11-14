@@ -1297,7 +1297,7 @@ func (r *Raft) appendEntries(rpc RPC, a *AppendEntriesRequest) {
 	}
 
 	// Save the current leader
-	r.setLeader(ServerAddress(r.trans.DecodePeer(a.Leader)))
+	r.setLeader(r.trans.DecodePeer(a.Leader))
 
 	// Verify the last log entry
 	// 验证日志的一致性
@@ -1560,7 +1560,7 @@ func (r *Raft) installSnapshot(rpc RPC, req *InstallSnapshotRequest) {
 	}
 
 	// Save the current leader
-	r.setLeader(ServerAddress(r.trans.DecodePeer(req.Leader)))
+	r.setLeader(r.trans.DecodePeer(req.Leader))
 
 	// Create a new snapshot
 	var reqConfiguration Configuration

@@ -499,7 +499,7 @@ FileSnapshotStore 实现快照 使用文件持久化存储 避免因程序重启
 
 	// Make sure we have a valid server address and ID.
 	protocolVersion := conf.ProtocolVersion
-	localAddr := ServerAddress(trans.LocalAddr())
+	localAddr := trans.LocalAddr()
 	localID := conf.LocalID
 
 	// TODO (slackpad) - When we deprecate protocol version 2, remove this
