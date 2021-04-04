@@ -81,8 +81,15 @@ type Raft struct {
 	// be committed and applied to the FSM.
 	applyCh chan *logFuture
 
-	// Configuration provided at Raft initialization
-	conf Config
+	// conf stores the current configuration to use. This is the most recent one
+	// provided. All reads of config values should use the config() helper method
+	// to read this safely.
+	conf atomic.Value
+
+	// confReloadMu ensures that only one thread can reload config at once since
+	// we need to read-modify-write the atomic. It is NOT necessary to hold this
+	// for any other operation e.g. reading config using config().
+	confReloadMu sync.Mutex
 
 	// FSM is the client state machine to apply commands to
 	fsm FSM
@@ -385,9 +392,9 @@ func RecoverCluster(conf *Config, fsm FSM, logs LogStore, stable StableStore,
 	return nil
 }
 
-// GetConfiguration returns the configuration of the Raft cluster without
-// starting a Raft instance or connecting to the cluster
-// This function has identical behavior to Raft.GetConfiguration
+// GetConfiguration returns the persisted configuration of the Raft cluster
+// without starting a Raft instance or connecting to the cluster. This function
+// has identical behavior to Raft.GetConfiguration.
 func GetConfiguration(conf *Config, fsm FSM, logs LogStore, stable StableStore,
 	snaps SnapshotStore, trans Transport) (Configuration, error) {
 	conf.skipStartup = true
@@ -518,7 +525,6 @@ FileSnapshotStore 实现快照 使用文件持久化存储 避免因程序重启
 	r := &Raft{
 		protocolVersion:       protocolVersion,
 		applyCh:               applyCh,
-		conf:                  *conf,
 		fsm:                   fsm,
 		fsmMutateCh:           make(chan interface{}, 128),
 		fsmSnapshotCh:         make(chan *reqSnapshotFuture),
@@ -542,6 +548,8 @@ FileSnapshotStore 实现快照 使用文件持久化存储 避免因程序重启
 		observers:             make(map[uint64]*Observer),
 		leadershipTransferCh:  make(chan *leadershipTransferFuture, 1),
 	}
+
+	r.conf.Store(*conf)
 
 	// Initialize as a follower.
 	r.setState(Follower)
@@ -596,7 +604,7 @@ func (r *Raft) restoreSnapshot() error {
 
 	// Try to load in order of newest to oldest
 	for _, snapshot := range snapshots {
-		if !r.conf.NoSnapshotRestoreOnStart {
+		if !r.config().NoSnapshotRestoreOnStart {
 			_, source, err := r.snapshots.Open(snapshot.ID)
 			if err != nil {
 				r.logger.Error("failed to open snapshot", "id", snapshot.ID, "error", err)
@@ -640,6 +648,32 @@ func (r *Raft) restoreSnapshot() error {
 	if len(snapshots) > 0 {
 		return fmt.Errorf("failed to load any existing snapshots")
 	}
+	return nil
+}
+
+func (r *Raft) config() Config {
+	return r.conf.Load().(Config)
+}
+
+// ReloadConfig updates the configuration of a running raft node. If the new
+// configuration is invalid an error is returned and no changes made to the
+// instance. All fields will be copied from rc into the new configuration, even
+// if they are zero valued.
+func (r *Raft) ReloadConfig(rc ReloadableConfig) error {
+	r.confReloadMu.Lock()
+	defer r.confReloadMu.Unlock()
+
+	// Load the current config (note we are under a lock so it can't be changed
+	// between this read and a later Store).
+	oldCfg := r.config()
+
+	// Set the reloadable fields
+	newCfg := rc.apply(oldCfg)
+
+	if err := ValidateConfig(&newCfg); err != nil {
+		return err
+	}
+	r.conf.Store(newCfg)
 	return nil
 }
 
